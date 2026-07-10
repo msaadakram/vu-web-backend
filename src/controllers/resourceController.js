@@ -24,7 +24,6 @@ const upload = async (req, res, next) => {
 
     let resolvedType = type;
     if (!type || type === 'auto') {
-      // AI classify the type
       const { classifyResource } = require('../services/blogGenerator');
       resolvedType = await classifyResource({ title, description, originalName: req.file.originalname, course });
 
@@ -117,7 +116,6 @@ const getOne = async (req, res, next) => {
   }
 };
 
-// Streams the file from R2 through this server
 const download = async (req, res, next) => {
   try {
     const resource = await Resource.findById(req.params.id);
@@ -137,7 +135,6 @@ const download = async (req, res, next) => {
   }
 };
 
-// Returns a short-lived direct download URL from R2
 const downloadLink = async (req, res, next) => {
   try {
     const resource = await Resource.findById(req.params.id);
@@ -163,8 +160,10 @@ const remove = async (req, res, next) => {
     }
 
     const isOwner = resource.uploadedBy.toString() === req.user._id.toString();
-    if (!isOwner) {
-      const err = new Error('Only the uploader can delete this resource');
+    const isAdmin = req.user.role === 'admin';
+
+    if (!isOwner && !isAdmin) {
+      const err = new Error('Only the uploader or an admin can delete this resource');
       err.status = 403;
       throw err;
     }
