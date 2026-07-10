@@ -18,9 +18,19 @@ app.use(helmet());
 app.use(
   cors({
     origin: (origin, callback) => {
-      const allowed = process.env.CLIENT_URL;
-      // Allow requests with no origin (server-to-server, curl) or matching CLIENT_URL
-      if (!origin || !allowed || origin === allowed) {
+      // Allow server-to-server / curl requests (no origin header)
+      if (!origin) return callback(null, true);
+
+      // Support comma-separated list: CLIENT_URL=https://a.vercel.app,http://localhost:3000
+      const allowed = (process.env.CLIENT_URL || '')
+        .split(',')
+        .map((u) => u.trim())
+        .filter(Boolean);
+
+      // If CLIENT_URL is not set (local dev), allow all origins
+      if (allowed.length === 0) return callback(null, true);
+
+      if (allowed.includes(origin)) {
         return callback(null, true);
       }
       return callback(new Error(`CORS policy: origin ${origin} not allowed`));
