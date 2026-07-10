@@ -1,15 +1,15 @@
 const express = require('express');
 const newsController = require('../controllers/newsController');
-const { protect } = require('../middleware/auth');
+const { protect, restrictTo } = require('../middleware/auth');
 const upload = require('../config/multer');
 
 const router = express.Router();
 
 // Admin routes
-router.post('/news/draft', protect, upload.single('coverImage'), newsController.createDraft);
-router.post('/news/:id/generate', protect, newsController.generateContent);
-router.put('/news/:id', protect, newsController.update);
-router.delete('/news/:id', protect, newsController.remove);
+router.post('/news/draft', protect, restrictTo('admin'), upload.single('coverImage'), newsController.createDraft);
+router.post('/news/:id/generate', protect, restrictTo('admin'), newsController.generateContent);
+router.put('/news/:id', protect, restrictTo('admin'), newsController.update);
+router.delete('/news/:id', protect, restrictTo('admin'), newsController.remove);
 
 // Public routes
 router.get('/news', newsController.getAll);

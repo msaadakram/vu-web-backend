@@ -1,6 +1,6 @@
 const express = require('express');
 const blogController = require('../controllers/blogController');
-const { protect } = require('../middleware/auth');
+const { protect, restrictTo } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -16,6 +16,6 @@ router.get('/blog/:slug', blogController.getBySlug);
 router.post('/blog/:id/retry', protect, blogController.retry);
 
 // Delete a blog post (admin only)
-router.delete('/blog/:id/delete', protect, blogController.remove);
+router.delete('/blog/:id/delete', protect, restrictTo('admin'), blogController.remove);
 
 module.exports = router;

@@ -33,7 +33,8 @@ app.use(
       if (allowed.includes(origin)) {
         return callback(null, true);
       }
-      return callback(new Error(`CORS policy: origin ${origin} not allowed`));
+      // Reject without throwing — throwing surfaces as a 500 via next(err)
+      return callback(null, false);
     },
     credentials: true,
   })
