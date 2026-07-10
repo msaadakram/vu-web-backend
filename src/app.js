@@ -17,7 +17,14 @@ const app = express();
 app.use(helmet());
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || '*',
+    origin: (origin, callback) => {
+      const allowed = process.env.CLIENT_URL;
+      // Allow requests with no origin (server-to-server, curl) or matching CLIENT_URL
+      if (!origin || !allowed || origin === allowed) {
+        return callback(null, true);
+      }
+      return callback(new Error(`CORS policy: origin ${origin} not allowed`));
+    },
     credentials: true,
   })
 );
