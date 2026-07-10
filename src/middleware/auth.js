@@ -13,23 +13,34 @@ const protect = async (req, res, next) => {
     if (!token) {
       const err = new Error('Not authorized, no token provided');
       err.status = 401;
-      throw err;
+      return next(err);
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+    } catch (jwtErr) {
+      const err = new Error(
+        jwtErr.name === 'TokenExpiredError'
+          ? 'Session expired, please log in again'
+          : 'Invalid token'
+      );
+      err.status = 401;
+      return next(err);
+    }
+
     const user = await User.findById(decoded.id).select('-password');
     if (!user) {
       const err = new Error('User no longer exists');
       err.status = 401;
-      throw err;
+      return next(err);
     }
 
     req.user = user;
     return next();
   } catch (err) {
-    const e = new Error('Not authorized, token failed');
-    e.status = 401;
-    return next(e);
+    err.status = err.status || 401;
+    return next(err);
   }
 };
 
