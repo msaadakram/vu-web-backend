@@ -1,6 +1,6 @@
 const express = require('express');
 const { body } = require('express-validator');
-const { register, login, me } = require('../controllers/authController');
+const { register, login, me, getReferral } = require('../controllers/authController');
 const { protect } = require('../middleware/auth');
 
 const router = express.Router();
@@ -25,5 +25,8 @@ router.post(
 );
 
 router.get('/me', protect, me);
+
+// Returns referral link + stats for the dashboard card
+router.get('/referral', protect, getReferral);
 
 module.exports = router;

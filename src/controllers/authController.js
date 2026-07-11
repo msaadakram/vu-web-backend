@@ -10,7 +10,7 @@ const register = async (req, res, next) => {
     return next(err);
   }
 
-  const { name, email, password } = req.body;
+  const { name, email, password, ref } = req.body;
 
   try {
     const existing = await User.findOne({ email });
@@ -20,13 +20,37 @@ const register = async (req, res, next) => {
       throw err;
     }
 
-    const user = await User.create({ name, email, password });
+    let referredByUser = null;
+    if (ref) {
+      referredByUser = await User.findOne({ referralCode: ref.toUpperCase() });
+    }
+
+    const user = await User.create({
+      name,
+      email,
+      password,
+      referredBy: referredByUser ? referredByUser._id : null,
+    });
+
+    // Increment referral count for the referrer
+    if (referredByUser) {
+      await User.findByIdAndUpdate(referredByUser._id, { $inc: { referralCount: 1 } });
+    }
+
     const token = user.getSignedToken();
 
     res.status(201).json({
       status: 'success',
       token,
-      data: { user: { id: user._id, name: user.name, email: user.email, role: user.role } },
+      data: {
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          referralCode: user.referralCode,
+        },
+      },
     });
   } catch (err) {
     next(err);
@@ -57,7 +81,15 @@ const login = async (req, res, next) => {
     res.status(200).json({
       status: 'success',
       token,
-      data: { user: { id: user._id, name: user.name, email: user.email, role: user.role } },
+      data: {
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          referralCode: user.referralCode,
+        },
+      },
     });
   } catch (err) {
     next(err);
@@ -73,9 +105,29 @@ const me = (req, res) => {
         name: req.user.name,
         email: req.user.email,
         role: req.user.role,
+        referralCode: req.user.referralCode,
+        referralCount: req.user.referralCount,
       },
     },
   });
 };
 
-module.exports = { register, login, me };
+// GET /api/auth/referral  — returns the current user's referral link
+const getReferral = (req, res) => {
+  const clientUrl = (process.env.CLIENT_URL || '').split(',')[0].trim();
+  const code = req.user.referralCode;
+  const referralLink = code
+    ? `${clientUrl}/register?ref=${code}`
+    : null;
+
+  res.status(200).json({
+    status: 'success',
+    data: {
+      referralCode: code || null,
+      referralLink: referralLink,
+      referralCount: req.user.referralCount || 0,
+    },
+  });
+};
+
+module.exports = { register, login, me, getReferral };
