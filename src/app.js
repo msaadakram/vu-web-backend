@@ -13,11 +13,11 @@ const resourceRoutes = require('./routes/resourceRoutes');
 const blogRoutes = require('./routes/blogRoutes');
 const newsRoutes = require('./routes/newsRoutes');
 const statsRoutes = require('./routes/statsRoutes');
+const newsletterRoutes = require('./routes/newsletterRoutes');
 
 const app = express();
 
-// IMPORTANT: trust Vercel's reverse-proxy so express-rate-limit
-// can read the real client IP from X-Forwarded-For
+// Trust Vercel reverse-proxy so express-rate-limit reads real client IP
 app.set('trust proxy', 1);
 
 app.use(helmet());
@@ -50,13 +50,11 @@ const limiter = rateLimit({
   max: 300,
   standardHeaders: true,
   legacyHeaders: false,
-  // Required when trust proxy is enabled — use the first IP in the chain
   keyGenerator: (req) => req.ip,
 });
 app.use('/api', limiter);
 
 // Serverless DB middleware — connect on every cold-start/request
-// because Vercel functions don't keep a persistent process alive
 app.use(async (req, res, next) => {
   try {
     await connectDB();
@@ -73,6 +71,7 @@ app.use(async (req, res, next) => {
 app.use('/api/health', healthRoute);
 app.use('/api/auth', authRoutes);
 app.use('/api/resources', resourceRoutes);
+app.use('/api/newsletter', newsletterRoutes);
 app.use('/api', blogRoutes);
 app.use('/api', newsRoutes);
 app.use('/api', statsRoutes);
