@@ -4,7 +4,7 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const compression = require('compression');
 const cookieParser = require('cookie-parser');
-const rateLimit = require('express-rate-limit');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 
 const connectDB = require('./config/db');
 const healthRoute = require('./routes/health');
@@ -62,11 +62,12 @@ const limiter = rateLimit({
   max: 300,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.ip || 'unknown',
+  // Use the built-in ipKeyGenerator helper so IPv6 addresses are handled
+  // correctly and the ERR_ERL_KEY_GEN_IPV6 warning is suppressed.
+  keyGenerator: ipKeyGenerator,
   validate: {
     xForwardedForHeader: false,
     forwardedHeader: false,
-    ipKeyGeneratorIpFallback: false,
   },
 });
 app.use('/api', limiter);
