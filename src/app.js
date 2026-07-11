@@ -68,6 +68,28 @@ app.use(async (req, res, next) => {
   }
 });
 
+// ── Root health / info route ──────────────────────────────────────────────────
+// Prevents "Not found: /" error when Vercel or uptime monitors hit the root URL.
+app.get('/', (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    name: 'VirtualUPK API',
+    version: process.env.npm_package_version || '1.0.0',
+    environment: process.env.NODE_ENV || 'production',
+    timestamp: new Date().toISOString(),
+    endpoints: {
+      health:     '/api/health',
+      auth:       '/api/auth',
+      blog:       '/api/blog',
+      news:       '/api/news',
+      resources:  '/api/resources',
+      newsletter: '/api/newsletter',
+      stats:      '/api/stats',
+    },
+  });
+});
+
+// ── API routes ────────────────────────────────────────────────────────────────
 app.use('/api/health', healthRoute);
 app.use('/api/auth', authRoutes);
 app.use('/api/resources', resourceRoutes);
@@ -76,12 +98,14 @@ app.use('/api', blogRoutes);
 app.use('/api', newsRoutes);
 app.use('/api', statsRoutes);
 
+// ── 404 handler ───────────────────────────────────────────────────────────────
 app.use((req, res, next) => {
   const err = new Error(`Not found: ${req.originalUrl}`);
   err.status = 404;
   next(err);
 });
 
+// ── Global error handler ──────────────────────────────────────────────────────
 app.use((err, req, res, next) => {
   if (err.name === 'MulterError') {
     const message =
@@ -98,6 +122,7 @@ app.use((err, req, res, next) => {
     status: 'error',
     message: err.message,
     ...(err.errors && { errors: err.errors }),
+    // Only expose stack trace in development
     ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
   });
 });
