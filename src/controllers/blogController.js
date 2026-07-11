@@ -1,6 +1,7 @@
 const BlogPost = require('../models/BlogPost');
 const Resource = require('../models/Resource');
 const blogGenerator = require('../services/blogGenerator');
+const { pingFrontendRevalidate } = require('../services/revalidate');
 
 /**
  * POST /api/resources/:id/blog/generate  (protected)
@@ -217,6 +218,7 @@ const remove = async (req, res, next) => {
 
     await BlogPost.findByIdAndDelete(req.params.id);
     res.status(200).json({ status: 'success', data: {} });
+    await pingFrontendRevalidate().catch(() => {});
   } catch (err) {
     next(err);
   }

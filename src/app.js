@@ -11,6 +11,7 @@ const authRoutes = require('./routes/authRoutes');
 const resourceRoutes = require('./routes/resourceRoutes');
 const blogRoutes = require('./routes/blogRoutes');
 const newsRoutes = require('./routes/newsRoutes');
+const statsRoutes = require('./routes/statsRoutes');
 
 const app = express();
 
@@ -61,6 +62,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/resources', resourceRoutes);
 app.use('/api', blogRoutes);
 app.use('/api', newsRoutes);
+app.use('/api', statsRoutes);
 
 app.use((req, res, next) => {
   const err = new Error(`Not found: ${req.originalUrl}`);

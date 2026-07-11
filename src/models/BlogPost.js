@@ -45,12 +45,26 @@ const blogPostSchema = new mongoose.Schema(
       type: String,
       default: '5 min read',
     },
+    intro: {
+      type: String,
+      default: '',
+    },
+    keyTakeaways: {
+      type: [String],
+      default: [],
+    },
     sections: [
       {
+        number: { type: String, default: '' },
         heading: { type: String, required: true },
         body: { type: String, required: true },
+        keyPoints: { type: [String], default: [] },
       },
     ],
+    relatedConcepts: {
+      type: [String],
+      default: [],
+    },
     faq: [
       {
         question: { type: String, required: true },

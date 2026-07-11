@@ -2,16 +2,20 @@ const slugify = require('../utils/slugify');
 const { chatCompletion } = require('../config/doai');
 const BlogPost = require('../models/BlogPost');
 const Resource = require('../models/Resource');
+const { pingFrontendRevalidate } = require('./revalidate');
 
-const SYSTEM_PROMPT = `You are an expert SEO content strategist and academic copywriter for Virtual University of Pakistan (VU). Your role is to create search-engine-optimized, authoritative, and student-focused blog articles that rank on Google.
+const SYSTEM_PROMPT = `You are an expert SEO content strategist and academic copywriter for Virtual University of Pakistan (VU). Your role is to create search-engine-optimized, authoritative, engaging, and student-focused blog articles that rank on Google and genuinely help VU students learn.
 
 Every article MUST:
 - Position Virtual University of Pakistan (VU) as the authoritative educational platform for the topic
 - Naturally include "Virtual University of Pakistan", "VU", or "VirtualU" at least 2-3 times throughout the article body
-- Be written for Pakistani university students (mention local academic context, exam patterns, semester systems)
+- Be written for Pakistani university students (mention local academic context, exam patterns, semester systems, VU's LMS and grading)
 - Include the course code (if provided) prominently in the content
 - Target high-intent educational keywords that Pakistani students search for (e.g. "CS301 past papers", "what is data structures", "calculus exam tips")
 - Follow Google's E-E-A-T guidelines (Experience, Expertise, Authoritativeness, Trustworthiness)
+- Open with a compelling hook in the first section that connects to a real student pain point
+- Use a confident, modern, encouraging tone — like a senior peer mentor, not a textbook
+- Include concrete examples, analogies, and "in the exam you will see…" framing where natural
 
 Return ONLY a valid JSON object (no markdown fences, no extra text) matching this exact schema:
 
@@ -25,9 +29,12 @@ Return ONLY a valid JSON object (no markdown fences, no extra text) matching thi
   "tags": ["string","string","string"] — 3-5 SEO tags including 'Virtual University of Pakistan'",
   "keywords": ["string","string","string"] — 3-5 primary keywords for SEO meta, must include the course code and 'Virtual University Pakistan'",
   "readTime": "string — accurate reading time estimate, e.g. '8 min read'",
+  "intro": "string — a single 2-4 sentence introductory paragraph that sets the stage and hooks the reader. Plain text only. This appears above the table of contents.",
+  "keyTakeaways": ["string","string","string","string"] — 4-6 concise bullet points (each 8-15 words) capturing the most important facts a student should remember. Plain text only.",
   "sections": [
-    { "heading": "string — H2 section title with keyword where natural", "body": "string — 2-4 paragraphs of rich, original, student-focused prose with specific examples. Each paragraph 3-6 sentences. Plain text only." }
+    { "number": "string — sequential number as a word, e.g. '1', '2', '3'", "heading": "string — H2 section title with keyword where natural (do NOT prefix with the number)", "body": "string — 2-4 paragraphs of rich, original, student-focused prose with specific examples. Each paragraph 3-6 sentences. Plain text only.", "keyPoints": ["string","string","string"] — 2-4 short bullet points (each 6-12 words) summarizing the most important facts in this section. Plain text only." }
   ],
+  "relatedConcepts": ["string","string","string","string"] — 4-6 short related-topic names or key terms (each 1-4 words) that connect to the subject, shown as a 'Related Topics' cluster at the end of the article.",
   "faq": [
     { "question": "string — question students actually Google", "answer": "string — detailed answer referencing VU resources and exam context" }
   ]
@@ -42,9 +49,10 @@ SEO REQUIREMENTS:
 - metaDescription MUST include a call-to-action like "Learn more at Virtual University of Pakistan"
 - DO NOT use markdown formatting anywhere — plain text only
 - Never use placeholder text — every sentence must be original and substantive
-- The article should be 1500-2500 words total`;
+- The article should be 1500-2500 words total
+- keyTakeaways and each section's keyPoints must be substantive — never placeholder text`;
 
-const NEWS_SYSTEM_PROMPT = `You are an expert content writer and journalist for Virtual University of Pakistan (VU). Your role is to create informative, engaging, and well-researched news articles that educate and inform students.
+const NEWS_SYSTEM_PROMPT = `You are an expert content writer and journalist for Virtual University of Pakistan (VU). Your role is to create informative, engaging, well-structured, and well-researched news articles that educate and inform students.
 
 Every article MUST:
 - Be written for Pakistani university students
@@ -52,6 +60,9 @@ Every article MUST:
 - Be factual, clear, and student-focused
 - Include specific concepts, frameworks, or information relevant to the topic
 - Follow high journalistic standards
+- Open with a strong, concise lead that summarizes what happened and why it matters to students
+- Use a modern, journalistic tone — informative, slightly energetic, scannable
+- Include "what this means for you" framing where natural so students see relevance
 
 Return ONLY a valid JSON object (no markdown fences, no extra text) matching this exact schema:
 
@@ -65,9 +76,12 @@ Return ONLY a valid JSON object (no markdown fences, no extra text) matching thi
   "tags": ["string","string","string"] — 3-5 relevant tags",
   "keywords": ["string","string","string"] — 3-5 primary keywords for SEO meta",
   "readTime": "string — accurate reading time estimate, e.g. '5 min read'",
+  "intro": "string — a single 2-4 sentence introductory paragraph that summarizes the story and why it matters. Plain text only. This appears above the table of contents.",
+  "keyTakeaways": ["string","string","string"] — 3-5 concise bullet points (each 8-15 words) capturing the key facts. Plain text only.",
   "sections": [
-    { "heading": "string — H2 section title", "body": "string — 2-4 paragraphs. Each paragraph 3-6 sentences. Plain text only." }
+    { "number": "string — sequential number, e.g. '1', '2'", "heading": "string — H2 section title (do NOT prefix with the number)", "body": "string — 2-4 paragraphs. Each paragraph 3-6 sentences. Plain text only.", "keyPoints": ["string","string","string"] — 2-4 short bullet points (each 6-12 words) summarizing this section. Plain text only." }
   ],
+  "relatedConcepts": ["string","string","string"] — 3-5 short related-topic names (each 1-4 words) shown as a 'Related Topics' cluster at the end of the article.",
   "faq": [
     { "question": "string — question students might ask", "answer": "string — detailed answer" }
   ]
@@ -78,7 +92,8 @@ REQUIREMENTS:
 - Each section must provide real value — not fluff
 - FAQ items must target actual student questions
 - DO NOT use markdown formatting — plain text only
-- The article should be 800-2000 words total`;
+- The article should be 800-2000 words total
+- keyTakeaways and each section's keyPoints must be substantive — never placeholder text`;
 
 
 /**
@@ -108,13 +123,21 @@ async function generate(blogPostId, resource) {
       title: result.title || resource.title,
       slug: uniqueSlug,
       excerpt: result.excerpt || '',
+      intro: result.intro || '',
+      keyTakeaways: Array.isArray(result.keyTakeaways) ? result.keyTakeaways : [],
+      relatedConcepts: Array.isArray(result.relatedConcepts) ? result.relatedConcepts : [],
       category: result.category || 'General',
       tags: result.tags || [],
       keywords: result.keywords || [],
       metaTitle: result.metaTitle || result.title || resource.title,
       metaDescription: result.metaDescription || '',
-      readTime: result.readTime || '5 min read',
-      sections: result.sections || [],
+      readTime: result.readTime || estimateReadTime(result.sections),
+      sections: (result.sections || []).map((s, idx) => ({
+        number: s.number || String(idx + 1),
+        heading: s.heading || '',
+        body: s.body || '',
+        keyPoints: Array.isArray(s.keyPoints) ? s.keyPoints : [],
+      })),
       faq: result.faq || [],
       aiModel: process.env.DOAI_MODEL || 'alibaba-qwen3-32b',
       status: 'published',
@@ -125,6 +148,10 @@ async function generate(blogPostId, resource) {
 
     // Link back from Resource
     await Resource.findByIdAndUpdate(resourceRef, { blog: blogPostId });
+
+    // Best-effort: refresh the frontend sitemap + /blog listing so the new
+    // article is crawlable immediately. Never blocks/throws on this.
+    await pingFrontendRevalidate().catch(() => {});
 
     return slug;
   } catch (err) {
@@ -170,13 +197,21 @@ async function generateFromFields(blogPostId, fields) {
       title: result.title || fields.title,
       slug: uniqueSlug,
       excerpt: result.excerpt || '',
+      intro: result.intro || '',
+      keyTakeaways: Array.isArray(result.keyTakeaways) ? result.keyTakeaways : [],
+      relatedConcepts: Array.isArray(result.relatedConcepts) ? result.relatedConcepts : [],
       category: result.category || fields.category || 'General',
       tags: result.tags || fields.tags || [],
       keywords: result.keywords || [],
       metaTitle: result.metaTitle || result.title || fields.title,
       metaDescription: result.metaDescription || '',
-      readTime: result.readTime || '5 min read',
-      sections: result.sections || [],
+      readTime: result.readTime || estimateReadTime(result.sections),
+      sections: (result.sections || []).map((s, idx) => ({
+        number: s.number || String(idx + 1),
+        heading: s.heading || '',
+        body: s.body || '',
+        keyPoints: Array.isArray(s.keyPoints) ? s.keyPoints : [],
+      })),
       faq: result.faq || [],
       aiModel: process.env.DOAI_MODEL || 'alibaba-qwen3-32b',
       status: 'published',
@@ -184,6 +219,10 @@ async function generateFromFields(blogPostId, fields) {
     };
 
     await BlogPost.findByIdAndUpdate(blogPostId, updates);
+
+    // Best-effort: refresh the frontend sitemap + /news listing.
+    await pingFrontendRevalidate().catch(() => {});
+
     return slug;
   } catch (err) {
     const msg = err.message || 'Unknown error during news generation';
@@ -193,6 +232,16 @@ async function generateFromFields(blogPostId, fields) {
     }).catch(() => {});
     throw err;
   }
+}
+
+function estimateReadTime(sections) {
+  if (!Array.isArray(sections)) return '5 min read';
+  const words = sections.reduce((sum, s) => {
+    const body = (s && s.body) || '';
+    return sum + body.split(/\s+/).filter(Boolean).length;
+  }, 0);
+  const mins = Math.max(1, Math.round(words / 200));
+  return `${mins} min read`;
 }
 
 function buildUserMessage(resource) {
