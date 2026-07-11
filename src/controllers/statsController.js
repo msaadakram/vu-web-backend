@@ -11,15 +11,16 @@ const getStats = async (req, res, next) => {
   try {
     const [resources, blogs, news, students] = await Promise.all([
       Resource.countDocuments({}).catch(() => 0),
-      BlogPost.countDocuments({ status: 'published', type: 'resource' }).catch(() => 0),
+      // Count both 'blog' and 'resource' types as blog content
+      BlogPost.countDocuments({ status: 'published', type: { $in: ['blog', 'resource'] } }).catch(() => 0),
       BlogPost.countDocuments({ status: 'published', type: 'news' }).catch(() => 0),
       User.countDocuments({ role: 'student' }).catch(() => 0),
     ]);
 
     // Latest 4 published posts (mix of blog + news), newest first
     const latest = await BlogPost.find({ status: 'published' })
-      .select('title slug excerpt category tags readTime createdAt updatedAt type uploadedBy coverImage')
-      .sort({ createdAt: -1 })
+      .select('title slug excerpt category tags readTime createdAt updatedAt publishedAt type uploadedBy coverImage')
+      .sort({ publishedAt: -1, createdAt: -1 })
       .limit(4)
       .populate('uploadedBy', 'name')
       .lean()

@@ -6,25 +6,30 @@
  * sitemap's `revalidate` window.
  *
  * Configured via two env vars (both optional — if unset, the ping is skipped):
- *   FRONTEND_URL       — e.g. https://vu-web-front.herokuapp.com (no trailing slash)
+ *   FRONTEND_URL       — e.g. https://virtualupk.vercel.app (no trailing slash)
  *   REVALIDATE_SECRET  — shared secret matching the frontend's REVALIDATE_SECRET
  *
  * Failures are swallowed (this must never break publishing).
+ *
+ * SECURITY: the secret is sent only in the x-revalidate-secret request header.
+ * It is NOT included in the URL query string to avoid it being captured in
+ * server access logs, CDN logs, or browser history.
  */
 async function pingFrontendRevalidate() {
   const frontendUrl = process.env.FRONTEND_URL;
   const secret = process.env.REVALIDATE_SECRET;
   if (!frontendUrl || !secret) return;
 
-  const url = `${frontendUrl.replace(/\/$/, "")}/api/revalidate?secret=${encodeURIComponent(secret)}`;
+  // Secret goes in header only — never in the URL
+  const url = `${frontendUrl.replace(/\/$/, '')}/api/revalidate`;
 
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
     const res = await fetch(url, {
-      method: "GET",
+      method: 'GET',
       signal: controller.signal,
-      headers: { "x-revalidate-secret": secret },
+      headers: { 'x-revalidate-secret': secret },
     });
     clearTimeout(timeout);
     if (res.ok) {

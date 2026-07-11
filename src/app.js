@@ -24,12 +24,22 @@ app.use(helmet());
 app.use(
   cors({
     origin: (origin, callback) => {
+      // Allow same-origin / server-to-server requests (no Origin header)
       if (!origin) return callback(null, true);
-      const allowed = (process.env.CLIENT_URL || '')
+
+      const raw = process.env.CLIENT_URL || '';
+      const allowed = raw
         .split(',')
         .map((u) => u.trim())
         .filter(Boolean);
-      if (allowed.length === 0) return callback(null, true);
+
+      // SECURITY: if CLIENT_URL is not configured, deny all cross-origin
+      // requests rather than defaulting to allow-all.
+      if (allowed.length === 0) {
+        console.warn('[CORS] CLIENT_URL not set — blocking cross-origin request from:', origin);
+        return callback(null, false);
+      }
+
       if (allowed.includes(origin)) return callback(null, true);
       return callback(null, false);
     },
@@ -50,9 +60,7 @@ const limiter = rateLimit({
   max: 300,
   standardHeaders: true,
   legacyHeaders: false,
-  // Use req.ip directly; trust proxy:1 ensures it's the real IP on Vercel
   keyGenerator: (req) => req.ip || 'unknown',
-  // Suppress Vercel-proxy header validation warnings
   validate: {
     xForwardedForHeader: false,
     forwardedHeader: false,

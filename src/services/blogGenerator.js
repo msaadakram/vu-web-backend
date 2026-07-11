@@ -114,8 +114,8 @@ async function generate(blogPostId, resource) {
       temperature: 0.7,
     });
 
-    const slug = slugify(result.slugHint || result.title || resource.title);
-    const uniqueSlug = await ensureUniqueSlug(slug);
+    const rawSlug = slugify(result.slugHint || result.title || resource.title);
+    const uniqueSlug = await ensureUniqueSlug(rawSlug);
 
     const resourceRef = resource._id || resource.id;
 
@@ -129,8 +129,9 @@ async function generate(blogPostId, resource) {
       category: result.category || 'General',
       tags: result.tags || [],
       keywords: result.keywords || [],
-      metaTitle: result.metaTitle || result.title || resource.title,
-      metaDescription: result.metaDescription || '',
+      // Enforce DB maxlength at application layer too
+      metaTitle: (result.metaTitle || result.title || resource.title).slice(0, 60),
+      metaDescription: (result.metaDescription || '').slice(0, 160),
       readTime: result.readTime || estimateReadTime(result.sections),
       sections: (result.sections || []).map((s, idx) => ({
         number: s.number || String(idx + 1),
@@ -141,6 +142,7 @@ async function generate(blogPostId, resource) {
       faq: result.faq || [],
       aiModel: process.env.DOAI_MODEL || 'alibaba-qwen3-32b',
       status: 'published',
+      publishedAt: new Date(),
       errorMessage: '',
     };
 
@@ -153,7 +155,7 @@ async function generate(blogPostId, resource) {
     // article is crawlable immediately. Never blocks/throws on this.
     await pingFrontendRevalidate().catch(() => {});
 
-    return slug;
+    return uniqueSlug;
   } catch (err) {
     const msg = err.message || 'Unknown error during blog generation';
     await BlogPost.findByIdAndUpdate(blogPostId, {
@@ -165,11 +167,16 @@ async function generate(blogPostId, resource) {
 }
 
 /**
- * Generate a standalone news/article (no resource required).
+ * Generate a standalone blog or news post (no resource required).
  * @param {string} blogPostId - Mongo _id of the BlogPost doc to populate
- * @param {object} fields - { title, description?, category?, tags? }
+ * @param {object} fields - { title, description?, category?, tags?, type? }
+ *   type: 'blog' uses the full SEO blog prompt; 'news' uses the news prompt.
  */
 async function generateFromFields(blogPostId, fields) {
+  // Choose the correct AI prompt based on post type
+  const postType = fields.type || 'news';
+  const systemPrompt = postType === 'blog' ? SYSTEM_PROMPT : NEWS_SYSTEM_PROMPT;
+
   try {
     const userMessage = [
       `Title: ${fields.title}`,
@@ -177,21 +184,23 @@ async function generateFromFields(blogPostId, fields) {
       fields.category ? `Category: ${fields.category}` : '',
       fields.tags?.length ? `Tags: ${fields.tags.join(', ')}` : '',
       '',
-      'Write a comprehensive, informative news/article for Virtual University of Pakistan (VU) students about this topic.',
+      postType === 'blog'
+        ? 'Write a comprehensive, SEO-optimized academic article for Virtual University of Pakistan (VU) students about this topic.'
+        : 'Write a comprehensive, informative news/article for Virtual University of Pakistan (VU) students about this topic.',
       'The article should be engaging, well-structured, and provide real educational value.',
     ].filter(Boolean).join('\n');
 
     const result = await chatCompletion({
       messages: [
-        { role: 'user', content: NEWS_SYSTEM_PROMPT },
+        { role: 'user', content: systemPrompt },
         { role: 'user', content: userMessage },
       ],
       jsonMode: true,
       temperature: 0.7,
     });
 
-    const slug = slugify(result.slugHint || result.title || fields.title);
-    const uniqueSlug = await ensureUniqueSlug(slug);
+    const rawSlug = slugify(result.slugHint || result.title || fields.title);
+    const uniqueSlug = await ensureUniqueSlug(rawSlug);
 
     const updates = {
       title: result.title || fields.title,
@@ -203,8 +212,9 @@ async function generateFromFields(blogPostId, fields) {
       category: result.category || fields.category || 'General',
       tags: result.tags || fields.tags || [],
       keywords: result.keywords || [],
-      metaTitle: result.metaTitle || result.title || fields.title,
-      metaDescription: result.metaDescription || '',
+      // Enforce DB maxlength at application layer too
+      metaTitle: (result.metaTitle || result.title || fields.title).slice(0, 60),
+      metaDescription: (result.metaDescription || '').slice(0, 160),
       readTime: result.readTime || estimateReadTime(result.sections),
       sections: (result.sections || []).map((s, idx) => ({
         number: s.number || String(idx + 1),
@@ -215,17 +225,18 @@ async function generateFromFields(blogPostId, fields) {
       faq: result.faq || [],
       aiModel: process.env.DOAI_MODEL || 'alibaba-qwen3-32b',
       status: 'published',
+      publishedAt: new Date(),
       errorMessage: '',
     };
 
     await BlogPost.findByIdAndUpdate(blogPostId, updates);
 
-    // Best-effort: refresh the frontend sitemap + /news listing.
+    // Best-effort: refresh the frontend sitemap + /news or /blog listing.
     await pingFrontendRevalidate().catch(() => {});
 
-    return slug;
+    return uniqueSlug;
   } catch (err) {
-    const msg = err.message || 'Unknown error during news generation';
+    const msg = err.message || 'Unknown error during content generation';
     await BlogPost.findByIdAndUpdate(blogPostId, {
       status: 'failed',
       errorMessage: msg.slice(0, 500),
@@ -273,7 +284,6 @@ async function ensureUniqueSlug(baseSlug) {
   const existing = await BlogPost.findOne({ slug: baseSlug }).lean();
   if (!existing) return baseSlug;
 
-  // Append a short numeric suffix
   for (let i = 1; i < 100; i++) {
     const candidate = `${baseSlug}-${i}`;
     const exists = await BlogPost.findOne({ slug: candidate }).lean();
@@ -316,7 +326,7 @@ Return ONLY a single word — the category name. No punctuation, no explanation.
     return 'other';
   } catch (err) {
     console.error(`[Classify] Error classifying resource: ${err.message}`);
-    return 'other'; // fallback
+    return 'other';
   }
 }
 

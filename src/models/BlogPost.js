@@ -1,6 +1,4 @@
 const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
 
 const blogPostSchema = new mongoose.Schema(
   {
@@ -15,6 +13,7 @@ const blogPostSchema = new mongoose.Schema(
       unique: true,
       lowercase: true,
       index: true,
+      maxlength: [100, 'Slug must be 100 characters or fewer'],
     },
     excerpt: {
       type: String,
@@ -36,10 +35,12 @@ const blogPostSchema = new mongoose.Schema(
     metaTitle: {
       type: String,
       default: '',
+      maxlength: [60, 'metaTitle must be 60 characters or fewer'],
     },
     metaDescription: {
       type: String,
       default: '',
+      maxlength: [160, 'metaDescription must be 160 characters or fewer'],
     },
     readTime: {
       type: String,
@@ -71,9 +72,12 @@ const blogPostSchema = new mongoose.Schema(
         answer: { type: String, required: true },
       },
     ],
+    // 'blog'    — standalone AI blog post (no resource required)
+    // 'resource' — blog post generated from an uploaded resource
+    // 'news'    — news / announcement post
     type: {
       type: String,
-      enum: ['resource', 'news'],
+      enum: ['blog', 'resource', 'news'],
       default: 'resource',
       index: true,
     },
@@ -92,6 +96,11 @@ const blogPostSchema = new mongoose.Schema(
       enum: ['generating', 'published', 'failed'],
       default: 'generating',
       index: true,
+    },
+    // Explicit publish date — used for sitemap lastModified & Google freshness signals
+    publishedAt: {
+      type: Date,
+      default: null,
     },
     aiModel: {
       type: String,
@@ -113,6 +122,7 @@ const blogPostSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// Full-text search index
 blogPostSchema.index({ title: 'text', excerpt: 'text', tags: 'text', category: 'text' });
 
-module.exports = mongoose.model('BlogPost', blogPostSchema);
+module.exports = mongoose.models.BlogPost || mongoose.model('BlogPost', blogPostSchema);
