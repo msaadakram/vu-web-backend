@@ -13,9 +13,12 @@ router.delete('/news/:id', protect, restrictTo('admin'), newsController.remove);
 
 // Public routes
 router.get('/news', newsController.getAll);
-router.get('/news/:slug', newsController.getBySlug);
 
-// Polling route (by ID)
-router.get('/news/id/:id', protect, newsController.getById);
+// Public: get a single news post by ID (used for status polling)
+// MUST be before /:slug to prevent 'id' being matched as a slug
+router.get('/news/id/:id', newsController.getById);
+
+// Public: get a single news post by slug
+router.get('/news/:slug', newsController.getBySlug);
 
 module.exports = router;

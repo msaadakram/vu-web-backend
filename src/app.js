@@ -47,11 +47,13 @@ app.use(
   })
 );
 app.use(compression());
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
+// Reduced from 50mb to 10mb — file uploads go through multer (multipart), not JSON
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 app.use(cookieParser());
 
-if (process.env.NODE_ENV !== 'test') {
+// Only log HTTP requests in development — skip in production and test
+if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
 }
 

@@ -1,11 +1,12 @@
 const express = require('express');
 const blogController = require('../controllers/blogController');
 const { protect, restrictTo } = require('../middleware/auth');
+const upload = require('../config/multer');
 
 const router = express.Router();
 
 // Admin: create a draft blog post
-router.post('/blog/draft', protect, restrictTo('admin'), blogController.createDraft);
+router.post('/blog/draft', protect, restrictTo('admin'), upload.single('coverImage'), blogController.createDraft);
 
 // Admin: trigger AI generation for a draft (also serves as retry)
 router.post('/blog/:id/generate', protect, blogController.generate);
@@ -14,12 +15,13 @@ router.post('/blog/:id/generate', protect, blogController.generate);
 router.put('/blog/:id', protect, restrictTo('admin'), blogController.update);
 
 // Admin: delete a blog post
-router.delete('/blog/:id/delete', protect, restrictTo('admin'), blogController.remove);
+router.delete('/blog/:id', protect, restrictTo('admin'), blogController.remove);
 
 // Public: list all published blog posts
 router.get('/blog', blogController.getAll);
 
 // Public: get a single blog post by ID (used for status polling)
+// MUST be before /:slug to prevent 'id' being matched as a slug
 router.get('/blog/id/:id', blogController.getById);
 
 // Public: get a single blog post by slug

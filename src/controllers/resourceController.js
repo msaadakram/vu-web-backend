@@ -20,10 +20,12 @@ const upload = async (req, res, next) => {
       throw err;
     }
 
-    const { title, description, type, course, semester } = req.body;
+    const { title, description, course, semester } = req.body;
+    // Normalize type: trim whitespace and lowercase so 'Assignment' and ' notes ' work
+    const rawType = (req.body.type || '').trim().toLowerCase();
 
-    let resolvedType = type;
-    if (!type || type === 'auto') {
+    let resolvedType = rawType;
+    if (!rawType || rawType === 'auto') {
       const { classifyResource } = require('../services/blogGenerator');
       resolvedType = await classifyResource({ title, description, originalName: req.file.originalname, course });
 
@@ -45,7 +47,7 @@ const upload = async (req, res, next) => {
       mimeType: req.file.mimetype,
       metadata: {
         title,
-        type,
+        type: resolvedType,
         uploadedBy: String(req.user._id),
         originalName: req.file.originalname,
       },
@@ -77,7 +79,7 @@ const getAll = async (req, res, next) => {
   try {
     const { type, course, semester, q, sort } = req.query;
     const filter = {};
-    if (type) filter.type = type;
+    if (type) filter.type = type.trim().toLowerCase();
     if (course) filter.course = new RegExp(course, 'i');
     if (semester) filter.semester = new RegExp(semester, 'i');
     if (q) filter.$text = { $search: q };

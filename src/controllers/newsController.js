@@ -3,6 +3,7 @@ const blogGenerator = require('../services/blogGenerator');
 const { buildKey } = require('../config/multer');
 const { uploadFile, deleteFile } = require('../config/r2');
 const { pingFrontendRevalidate } = require('../services/revalidate');
+const { pingSitemaps } = require('../utils/sitemapPing');
 
 /**
  * POST /api/news/draft  (admin)
@@ -21,7 +22,6 @@ const createDraft = async (req, res, next) => {
     let coverImage = '';
     let coverImageKey = '';
 
-    // If a cover image was uploaded, store it on R2
     if (req.file) {
       const key = buildKey(req.file);
       coverImage = await uploadFile({
@@ -59,7 +59,7 @@ const generateContent = async (req, res, next) => {
   try {
     const blog = await BlogPost.findById(req.params.id);
     if (!blog) {
-      const err = new Error('Blog post not found');
+      const err = new Error('News post not found');
       err.status = 404;
       throw err;
     }
@@ -74,22 +74,26 @@ const generateContent = async (req, res, next) => {
       return res.status(200).json({ status: 'success', data: { blog } });
     }
 
-    // Reset to generating
     blog.status = 'generating';
     blog.errorMessage = '';
     await blog.save();
 
     res.status(200).json({ status: 'success', data: { blog } });
 
-    // Run generation in background
+    // Run generation in background — pass type:'news' so correct AI prompt is used
     blogGenerator
       .generateFromFields(blog._id, {
         title: blog.title,
         description: req.body.description || '',
         category: blog.category,
         tags: blog.tags,
+        type: 'news',
       })
-      .then((slug) => console.log(`[NewsGen] Published: /news/${slug}`))
+      .then((slug) => {
+        console.log(`[NewsGen] Published: /news/${slug}`);
+        // Ping sitemap on successful publish (same as blogController)
+        pingSitemaps([`/news/${slug}`, '/whats-new']).catch(() => {});
+      })
       .catch((err) => console.error(`[NewsGen] Failed:`, err.message));
   } catch (err) {
     next(err);
@@ -143,6 +147,24 @@ const getAll = async (req, res, next) => {
 };
 
 /**
+ * GET /api/news/id/:id  (public — used for polling generation status)
+ * Returns a single news post by ID.
+ */
+const getById = async (req, res, next) => {
+  try {
+    const blog = await BlogPost.findById(req.params.id).lean();
+    if (!blog) {
+      const err = new Error('News post not found');
+      err.status = 404;
+      throw err;
+    }
+    res.status(200).json({ status: 'success', data: { blog } });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
  * GET /api/news/:slug  (public)
  * Returns a single published news post by slug.
  */
@@ -152,25 +174,6 @@ const getBySlug = async (req, res, next) => {
       .populate('uploadedBy', 'name email')
       .lean();
 
-    if (!blog) {
-      const err = new Error('News post not found');
-      err.status = 404;
-      throw err;
-    }
-
-    res.status(200).json({ status: 'success', data: { blog } });
-  } catch (err) {
-    next(err);
-  }
-};
-
-/**
- * GET /api/news/:id  (public/authenticated)
- * Returns a single news post by ID (used for polling).
- */
-const getById = async (req, res, next) => {
-  try {
-    const blog = await BlogPost.findById(req.params.id).lean();
     if (!blog) {
       const err = new Error('News post not found');
       err.status = 404;
@@ -208,7 +211,7 @@ const update = async (req, res, next) => {
 
 /**
  * DELETE /api/news/:id  (admin)
- * Deletes a news post.
+ * Deletes a news post and removes its cover image from R2.
  */
 const remove = async (req, res, next) => {
   try {
@@ -219,7 +222,6 @@ const remove = async (req, res, next) => {
       throw err;
     }
 
-    // Delete cover image from R2 if it exists
     if (blog.coverImageKey) {
       await deleteFile(blog.coverImageKey).catch(() => {});
     }
