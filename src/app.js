@@ -51,6 +51,11 @@ const limiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => req.ip,
+  // Suppress proxy-header ValidationErrors on Vercel serverless environment
+  validate: {
+    xForwardedForHeader: false,
+    forwardedHeader: false,
+  },
 });
 app.use('/api', limiter);
 
