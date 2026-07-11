@@ -1,10 +1,11 @@
 const express = require('express');
 const { body } = require('express-validator');
-const { register, login, me, getReferral } = require('../controllers/authController');
+const { register, login, googleAuth, me, getReferral } = require('../controllers/authController');
 const { protect } = require('../middleware/auth');
 
 const router = express.Router();
 
+// ── Email / Password ──────────────────────────────────────────────────────────
 router.post(
   '/register',
   [
@@ -24,9 +25,16 @@ router.post(
   login
 );
 
-router.get('/me', protect, me);
+// ── Google OAuth (One Tap / Sign-In button) ───────────────────────────────────
+// Accepts the credential (id_token) returned by Google Identity Services
+router.post(
+  '/google',
+  [body('credential').notEmpty().withMessage('Google credential is required')],
+  googleAuth
+);
 
-// Returns referral link + stats for the dashboard card
+// ── Protected routes ──────────────────────────────────────────────────────────
+router.get('/me', protect, me);
 router.get('/referral', protect, getReferral);
 
 module.exports = router;

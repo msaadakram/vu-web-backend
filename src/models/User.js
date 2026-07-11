@@ -20,7 +20,6 @@ const userSchema = new mongoose.Schema(
     },
     password: {
       type: String,
-      required: [true, 'Password is required'],
       minlength: 6,
       select: false,
     },
@@ -30,6 +29,27 @@ const userSchema = new mongoose.Schema(
       default: 'student',
       index: true,
     },
+    // Google OAuth fields
+    googleId: {
+      type: String,
+      unique: true,
+      sparse: true,   // allows multiple null values
+    },
+    googleEmail: {
+      type: String,
+      lowercase: true,
+      trim: true,
+    },
+    avatar: {
+      type: String,   // Google profile picture URL
+      default: null,
+    },
+    authProvider: {
+      type: String,
+      enum: ['local', 'google', 'both'],
+      default: 'local',
+    },
+    // Referral fields
     referralCode: {
       type: String,
       unique: true,
@@ -44,29 +64,55 @@ const userSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    // Security: track failed logins
+    loginAttempts: {
+      type: Number,
+      default: 0,
+    },
+    lockUntil: {
+      type: Date,
+      default: null,
+    },
   },
   { timestamps: true }
 );
 
-// Auto-generate referral code before saving new user
+// Auto-generate referral code for new users
 userSchema.pre('save', async function (next) {
   if (this.isNew && !this.referralCode) {
     this.referralCode = crypto.randomBytes(4).toString('hex').toUpperCase();
   }
-  if (!this.isModified('password')) return next();
+  if (!this.isModified('password') || !this.password) return next();
   const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);
   next();
 });
 
-userSchema.methods.matchPassword = function matchPassword(entered) {
+userSchema.virtual('isLocked').get(function () {
+  return !!(this.lockUntil && this.lockUntil > Date.now());
+});
+
+userSchema.methods.matchPassword = function (entered) {
   return bcrypt.compare(entered, this.password);
 };
 
-userSchema.methods.getSignedToken = function getSignedToken() {
+userSchema.methods.getSignedToken = function () {
   return jwt.sign({ id: this._id, role: this.role }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRES_IN || '90d',
   });
+};
+
+userSchema.methods.incLoginAttempts = async function () {
+  // Reset if lock has expired
+  if (this.lockUntil && this.lockUntil < Date.now()) {
+    return this.updateOne({ $set: { loginAttempts: 1 }, $unset: { lockUntil: 1 } });
+  }
+  const updates = { $inc: { loginAttempts: 1 } };
+  // Lock for 15 min after 5 failed attempts
+  if (this.loginAttempts + 1 >= 5 && !this.isLocked) {
+    updates.$set = { lockUntil: new Date(Date.now() + 15 * 60 * 1000) };
+  }
+  return this.updateOne(updates);
 };
 
 module.exports = mongoose.model('User', userSchema);
