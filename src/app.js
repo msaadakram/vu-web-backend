@@ -50,11 +50,13 @@ const limiter = rateLimit({
   max: 300,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.ip,
-  // Suppress proxy-header ValidationErrors on Vercel serverless environment
+  // Use req.ip directly; trust proxy:1 ensures it's the real IP on Vercel
+  keyGenerator: (req) => req.ip || 'unknown',
+  // Suppress Vercel-proxy header validation warnings
   validate: {
     xForwardedForHeader: false,
     forwardedHeader: false,
+    ipKeyGeneratorIpFallback: false,
   },
 });
 app.use('/api', limiter);
@@ -74,7 +76,6 @@ app.use(async (req, res, next) => {
 });
 
 // ── Root health / info route ──────────────────────────────────────────────────
-// Prevents "Not found: /" error when Vercel or uptime monitors hit the root URL.
 app.get('/', (req, res) => {
   res.status(200).json({
     status: 'ok',
@@ -127,7 +128,6 @@ app.use((err, req, res, next) => {
     status: 'error',
     message: err.message,
     ...(err.errors && { errors: err.errors }),
-    // Only expose stack trace in development
     ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
   });
 });
