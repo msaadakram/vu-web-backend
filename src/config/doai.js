@@ -24,7 +24,7 @@ class DoaiError extends Error {
  * @param {number} [opts.temperature=0.7]
  * @returns {Promise<string>} The content text from choices[0].message
  */
-async function chatCompletion({ messages, jsonMode = false, maxTokens, temperature = 0.7 }) {
+async function chatCompletion({ messages, jsonMode = false, maxTokens, temperature = 0.7, timeout = 120000 }) {
   if (!DOAI_API_KEY) {
     throw new DoaiError(0, 'DOAI_API_KEY not configured');
   }
@@ -40,14 +40,28 @@ async function chatCompletion({ messages, jsonMode = false, maxTokens, temperatu
     body.response_format = { type: 'json_object' };
   }
 
-  const res = await fetch(`${DOAI_BASE_URL}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${DOAI_API_KEY}`,
-    },
-    body: JSON.stringify(body),
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+
+  let res;
+  try {
+    res = await fetch(`${DOAI_BASE_URL}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${DOAI_API_KEY}`,
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    clearTimeout(timer);
+    if (err.name === 'AbortError') {
+      throw new DoaiError(408, 'AI request timed out after ' + (timeout / 1000) + 's');
+    }
+    throw new DoaiError(0, 'AI request failed: ' + err.message);
+  }
+  clearTimeout(timer);
 
   const data = await res.json().catch(() => null);
 

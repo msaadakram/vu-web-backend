@@ -1,6 +1,8 @@
 const { validationResult } = require('express-validator');
 const Resource = require('../models/Resource');
 const { RESOURCE_TYPES } = require('../models/Resource');
+const BlogPost = require('../models/BlogPost');
+const blogGenerator = require('../services/blogGenerator');
 const { buildKey } = require('../config/multer');
 const { uploadFile, getFile, getSignedDownloadUrl, deleteFile } = require('../config/r2');
 
@@ -179,4 +181,86 @@ const remove = async (req, res, next) => {
   }
 };
 
-module.exports = { upload, getAll, getOne, download, downloadLink, remove };
+/**
+ * POST /api/resources/:id/blog/generate
+ * Creates a draft blog post from a resource and triggers AI generation.
+ */
+const generateBlog = async (req, res, next) => {
+  try {
+    const resource = await Resource.findById(req.params.id);
+    if (!resource) {
+      const err = new Error('Resource not found');
+      err.status = 404;
+      throw err;
+    }
+
+    // Only the uploader or an admin can generate a blog from a resource
+    if (resource.uploadedBy.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
+      const err = new Error('Not authorized to generate blog from this resource');
+      err.status = 403;
+      throw err;
+    }
+
+    // Check if a blog post already exists for this resource
+    if (resource.blog) {
+      const existing = await BlogPost.findById(resource.blog);
+      if (existing) {
+        return res.status(200).json({ status: 'success', data: { blog: { _id: existing._id, status: existing.status } } });
+      }
+    }
+
+    const blog = await BlogPost.create({
+      title: resource.title,
+      slug: `generating-${Date.now()}`,
+      type: 'blog',
+      category: 'General',
+      tags: [],
+      resource: resource._id,
+      uploadedBy: req.user._id,
+      status: 'generating',
+    });
+
+    // Link resource to blog post
+    resource.blog = blog._id;
+    await resource.save();
+
+    res.status(201).json({ status: 'success', data: { blog: { _id: blog._id, status: blog.status } } });
+
+    // Run AI generation in background
+    blogGenerator
+      .generate(blog._id, resource.toObject())
+      .then((slug) => {
+        console.log(`[ResourceBlog] Published: /blog/${slug}`);
+      })
+      .catch((err) => console.error(`[ResourceBlog] Failed:`, err.message));
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * GET /api/resources/:id/blog
+ * Returns the blog post associated with a resource (for polling).
+ */
+const getResourceBlog = async (req, res, next) => {
+  try {
+    const resource = await Resource.findById(req.params.id).populate('blog');
+    if (!resource) {
+      const err = new Error('Resource not found');
+      err.status = 404;
+      throw err;
+    }
+
+    if (!resource.blog) {
+      const err = new Error('Blog post not yet created');
+      err.status = 404;
+      throw err;
+    }
+
+    res.status(200).json({ status: 'success', data: { blog: resource.blog } });
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { upload, getAll, getOne, download, downloadLink, remove, generateBlog, getResourceBlog };

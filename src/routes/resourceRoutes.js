@@ -27,4 +27,8 @@ router
 router.get('/:id/download', resourceController.download);
 router.get('/:id/download-link', resourceController.downloadLink);
 
+// Generate blog from resource
+router.post('/:id/blog/generate', protect, resourceController.generateBlog);
+router.get('/:id/blog', resourceController.getResourceBlog);
+
 module.exports = router;
