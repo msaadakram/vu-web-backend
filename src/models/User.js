@@ -78,14 +78,13 @@ const userSchema = new mongoose.Schema(
 );
 
 // Auto-generate referral code for new users
-userSchema.pre('save', async function (next) {
+userSchema.pre('save', async function () {
   if (this.isNew && !this.referralCode) {
     this.referralCode = crypto.randomBytes(4).toString('hex').toUpperCase();
   }
-  if (!this.isModified('password') || !this.password) return next();
+  if (!this.isModified('password') || !this.password) return;
   const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);
-  next();
 });
 
 userSchema.virtual('isLocked').get(function () {

@@ -1,6 +1,7 @@
 const DOAI_API_KEY = process.env.DOAI_API_KEY;
 const DOAI_BASE_URL = process.env.DOAI_BASE_URL || 'https://inference.do-ai.run/v1';
 const DOAI_MODEL = process.env.DOAI_MODEL || 'alibaba-qwen3-32b';
+const DOAI_TIMEOUT = parseInt(process.env.DOAI_TIMEOUT || '300000', 10);
 
 if (!DOAI_API_KEY) {
   console.warn('[DOAI] Missing DOAI_API_KEY — AI blog generation will fail.');
@@ -24,7 +25,7 @@ class DoaiError extends Error {
  * @param {number} [opts.temperature=0.7]
  * @returns {Promise<string>} The content text from choices[0].message
  */
-async function chatCompletion({ messages, jsonMode = false, maxTokens, temperature = 0.7, timeout = 120000 }) {
+async function chatCompletion({ messages, jsonMode = false, maxTokens, temperature = 0.7, timeout = DOAI_TIMEOUT }) {
   if (!DOAI_API_KEY) {
     throw new DoaiError(0, 'DOAI_API_KEY not configured');
   }
