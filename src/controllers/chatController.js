@@ -1,4 +1,4 @@
-const { chatCompletion } = require('../config/doai');
+const { chatCompletionStream, DoaiError } = require('../config/doai');
 
 const SYSTEM_PROMPT = `You are a helpful AI assistant for Virtual University of Pakistan's study portal (VirtualU). 
 You help students with:
@@ -26,16 +26,68 @@ exports.sendMessage = async (req, res, next) => {
       { role: 'user', content: message.trim() },
     ];
 
-    const reply = await chatCompletion({
-      messages,
-      temperature: 0.7,
-      maxTokens: 1024,
-      timeout: 30000,
-    });
+    const aiRes = await chatCompletionStream({ messages, temperature: 0.7, maxTokens: 1024, timeout: 30000 });
 
-    res.json({ status: 'success', data: { reply } });
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+
+    const reader = aiRes.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith('data: ')) continue;
+        const data = trimmed.slice(6);
+        if (data === '[DONE]') continue;
+
+        try {
+          const parsed = JSON.parse(data);
+          const content = parsed?.choices?.[0]?.delta?.content || '';
+          if (content) {
+            res.write(`data: ${JSON.stringify({ content })}\n\n`);
+          }
+        } catch {
+          // skip malformed JSON chunks
+        }
+      }
+    }
+
+    // parse remaining buffer
+    if (buffer.trim()) {
+      const trimmed = buffer.trim();
+      if (trimmed.startsWith('data: ')) {
+        const data = trimmed.slice(6);
+        if (data !== '[DONE]') {
+          try {
+            const parsed = JSON.parse(data);
+            const content = parsed?.choices?.[0]?.delta?.content || '';
+            if (content) res.write(`data: ${JSON.stringify({ content })}\n\n`);
+          } catch {}
+        }
+      }
+    }
+
+    res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+    res.end();
   } catch (err) {
     if (err.name === 'DoaiError' && err.status) {
+      // try to send error as SSE
+      if (res.headersSent) {
+        res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
+        res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+        return res.end();
+      }
       return res.status(err.status).json({ status: 'error', message: err.message });
     }
     next(err);

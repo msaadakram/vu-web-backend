@@ -123,4 +123,59 @@ function stripAndParseJson(text) {
   }
 }
 
-module.exports = { chatCompletion, DoaiError };
+/**
+ * Call the DO AI chat-completions endpoint with streaming.
+ * Returns the raw fetch Response so the caller can pipe the SSE stream.
+ * @param {object} opts
+ * @param {Array<{role:string,content:string}>} opts.messages
+ * @param {number} [opts.maxTokens=1024]
+ * @param {number} [opts.temperature=0.7]
+ * @param {number} [opts.timeout=30000]
+ * @returns {Promise<Response>} The fetch Response (body is a ReadableStream of SSE)
+ */
+async function chatCompletionStream({ messages, maxTokens, temperature = 0.7, timeout = 30000 }) {
+  if (!DOAI_API_KEY) {
+    throw new DoaiError(0, 'DOAI_API_KEY not configured');
+  }
+
+  const body = {
+    model: DOAI_MODEL,
+    messages,
+    temperature,
+    max_tokens: maxTokens || 1024,
+    stream: true,
+  };
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+
+  let res;
+  try {
+    res = await fetch(`${DOAI_BASE_URL}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${DOAI_API_KEY}`,
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    clearTimeout(timer);
+    if (err.name === 'AbortError') {
+      throw new DoaiError(408, 'AI request timed out');
+    }
+    throw new DoaiError(0, 'AI request failed: ' + err.message);
+  }
+  clearTimeout(timer);
+
+  if (!res.ok) {
+    const errData = await res.json().catch(() => null);
+    const msg = errData?.error?.message || errData?.message || `DO AI request failed: ${res.status}`;
+    throw new DoaiError(res.status, msg, errData);
+  }
+
+  return res;
+}
+
+module.exports = { chatCompletion, chatCompletionStream, DoaiError };
