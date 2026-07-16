@@ -5,6 +5,7 @@ const BlogPost = require('../models/BlogPost');
 const blogGenerator = require('../services/blogGenerator');
 const { buildKey } = require('../config/multer');
 const { uploadFile, getFile, getSignedDownloadUrl, deleteFile } = require('../config/r2');
+const { pingSitemaps } = require('../utils/sitemapPing');
 
 const upload = async (req, res, next) => {
   try {
@@ -72,6 +73,9 @@ const upload = async (req, res, next) => {
     });
 
     res.status(201).json({ status: 'success', data: { resource } });
+
+    // Best-effort: refresh sitemaps so the new resource appears in listings
+    pingSitemaps(['/resources', '/whats-new']).catch(() => {});
   } catch (err) {
     next(err);
   }

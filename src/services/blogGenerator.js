@@ -2,7 +2,7 @@ const slugify = require('../utils/slugify');
 const { chatCompletion } = require('../config/doai');
 const BlogPost = require('../models/BlogPost');
 const Resource = require('../models/Resource');
-const { pingFrontendRevalidate } = require('./revalidate');
+const { pingSitemaps } = require('../utils/sitemapPing');
 
 const SYSTEM_PROMPT = `You are an expert SEO content strategist and academic copywriter for Virtual University of Pakistan (VU). Your role is to create search-engine-optimized, authoritative, engaging, and student-focused blog articles that rank on Google and genuinely help VU students learn.
 
@@ -151,9 +151,9 @@ async function generate(blogPostId, resource) {
     // Link back from Resource
     await Resource.findByIdAndUpdate(resourceRef, { blog: blogPostId });
 
-    // Best-effort: refresh the frontend sitemap + /blog listing so the new
+    // Best-effort: ping search engines + refresh frontend sitemaps so the new
     // article is crawlable immediately. Never blocks/throws on this.
-    await pingFrontendRevalidate().catch(() => {});
+    await pingSitemaps([`/blog/${uniqueSlug}`, '/whats-new']).catch(() => {});
 
     return uniqueSlug;
   } catch (err) {
@@ -231,8 +231,9 @@ async function generateFromFields(blogPostId, fields) {
 
     await BlogPost.findByIdAndUpdate(blogPostId, updates);
 
-    // Best-effort: refresh the frontend sitemap + /news or /blog listing.
-    await pingFrontendRevalidate().catch(() => {});
+    // Best-effort: ping search engines + refresh frontend sitemaps.
+    const pathPrefix = postType === 'blog' ? '/blog/' : '/news/';
+    await pingSitemaps([`${pathPrefix}${uniqueSlug}`, '/whats-new']).catch(() => {});
 
     return uniqueSlug;
   } catch (err) {

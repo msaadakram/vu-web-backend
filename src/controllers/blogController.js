@@ -3,7 +3,6 @@ const blogGenerator = require('../services/blogGenerator');
 const { buildKey } = require('../config/multer');
 const { uploadFile, deleteFile } = require('../config/r2');
 const { pingSitemaps } = require('../utils/sitemapPing');
-const { pingFrontendRevalidate } = require('../services/revalidate');
 
 /**
  * POST /api/blog/draft  (admin)
@@ -228,7 +227,6 @@ const remove = async (req, res, next) => {
     await BlogPost.findByIdAndDelete(req.params.id);
 
     res.status(200).json({ status: 'success', data: {} });
-    await pingFrontendRevalidate().catch(() => {});
   } catch (err) {
     next(err);
   }
