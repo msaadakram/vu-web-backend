@@ -33,6 +33,11 @@ exports.sendMessage = async (req, res, next) => {
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('X-Accel-Buffering', 'no');
 
+    if (res.socket) {
+      res.socket.setNoDelay(true);
+    }
+    res.flushHeaders();
+
     const reader = aiRes.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
@@ -53,7 +58,11 @@ exports.sendMessage = async (req, res, next) => {
 
         try {
           const parsed = JSON.parse(data);
-          const content = parsed?.choices?.[0]?.delta?.content || '';
+          const choice = parsed?.choices?.[0]?.delta;
+          let content = choice?.content || '';
+          if (!content && choice?.reasoning_content) {
+            content = choice.reasoning_content;
+          }
           if (content) {
             res.write(`data: ${JSON.stringify({ content })}\n\n`);
           }
@@ -71,7 +80,11 @@ exports.sendMessage = async (req, res, next) => {
         if (data !== '[DONE]') {
           try {
             const parsed = JSON.parse(data);
-            const content = parsed?.choices?.[0]?.delta?.content || '';
+            const choice = parsed?.choices?.[0]?.delta;
+            let content = choice?.content || '';
+            if (!content && choice?.reasoning_content) {
+              content = choice.reasoning_content;
+            }
             if (content) res.write(`data: ${JSON.stringify({ content })}\n\n`);
           } catch {}
         }
@@ -82,7 +95,6 @@ exports.sendMessage = async (req, res, next) => {
     res.end();
   } catch (err) {
     if (err.name === 'DoaiError' && err.status) {
-      // try to send error as SSE
       if (res.headersSent) {
         res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
         res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
