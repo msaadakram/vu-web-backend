@@ -14,6 +14,7 @@ const blogRoutes = require('./routes/blogRoutes');
 const newsRoutes = require('./routes/newsRoutes');
 const statsRoutes = require('./routes/statsRoutes');
 const newsletterRoutes = require('./routes/newsletterRoutes');
+const chatRoutes = require('./routes/chatRoutes');
 
 const app = express();
 
@@ -102,6 +103,7 @@ app.get('/', (req, res) => {
       resources:  '/api/resources',
       newsletter: '/api/newsletter',
       stats:      '/api/stats',
+      chat:       '/api/chat',
     },
   });
 });
@@ -114,6 +116,7 @@ app.use('/api/newsletter', newsletterRoutes);
 app.use('/api', blogRoutes);
 app.use('/api', newsRoutes);
 app.use('/api', statsRoutes);
+app.use('/api', chatRoutes);
 
 // ── 404 handler ───────────────────────────────────────────────────────────────
 app.use((req, res, next) => {
