@@ -227,12 +227,15 @@ const generateBlog = async (req, res, next) => {
     res.status(201).json({ status: 'success', data: { blog: { _id: blog._id, status: blog.status } } });
 
     // Run AI generation in background
+    const resourceObj = resource.toObject();
     blogGenerator
-      .generate(blog._id, resource.toObject())
+      .generate(blog._id, resourceObj)
       .then((slug) => {
         console.log(`[ResourceBlog] Published: /blog/${slug}`);
       })
-      .catch((err) => console.error(`[ResourceBlog] Failed:`, err.message));
+      .catch((err) => {
+        console.error(`[ResourceBlog] AI generation failed:`, err.message, err.stack || '');
+      });
   } catch (err) {
     next(err);
   }
